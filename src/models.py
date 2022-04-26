@@ -1,7 +1,15 @@
+import re
+
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import chain
 from typing import Optional
+
 import numpy as np
+
+NON_WORDS = re.compile("[^\w ]")
+
 
 class Index:
     channels: dict[int, "Channel"]
@@ -19,17 +27,35 @@ class Index:
 
     def update_channels(self, data: dict):
         self.channels[data["id"]].type = data["type"]
-    
-    def message(self, n: int, start_: int = 0) -> list['Message']:
-        return sorted(np.concatenate([channel.messages for channel in self.channels.values()]), key=lambda x: x.timestamp)[start_:n]
+
+    def message(self, n: int, start_: int = 0) -> list["Message"]:
+        return sorted(
+            np.concatenate([channel.messages for channel in self.channels.values()]), key=lambda x: x.timestamp
+        )[start_:n]
 
     @property
-    def total_messages(self):
+    def total_messages(self) -> int:
         return sum([len(i.messages) for i in self.channels.values()])
 
     @property
-    def total_characters(self):
+    def total_characters(self) -> int:
         return sum([sum([len(m.contents) for m in i.messages]) for i in self.channels.values()])
+
+    @property
+    def clean_words(self) -> list[str]:
+        return list(chain(*[c.clean_words for c in self.channels.values()]))
+
+    @property
+    def words(self) -> Counter:
+        return Counter(self.clean_words)
+
+    @property
+    def length(self) -> int:
+        return sum([c.length for c in self.channels.values()])
+
+    @property
+    def word_count(self) -> int:
+        return sum([c.word_count for c in self.channels.values()])
 
     @property
     def channel_stats(self):
@@ -83,6 +109,22 @@ class Channel:
     def guild(self) -> Server:
         return self._index.servers[self.guild_id]
 
+    @property
+    def clean_words(self) -> list[str]:
+        return list(chain(*[m.clean_words for m in self.messages]))
+
+    @property
+    def words(self) -> Counter:
+        return Counter(self.clean_words)
+
+    @property
+    def length(self) -> int:
+        return sum([m.length for m in self.messages])
+
+    @property
+    def word_count(self) -> int:
+        return sum([m.word_count for m in self.messages])
+
 
 @dataclass(slots=True)
 class Message:
@@ -100,3 +142,19 @@ class Message:
     @property
     def guild(self) -> Server:
         return self._index.servers[self.channel.guild_id]
+
+    @property
+    def clean_words(self) -> list[str]:
+        return [word.lower() for word in NON_WORDS.sub("", self.contents).split(" ")]
+
+    @property
+    def words(self) -> Counter:
+        return Counter(self.clean_words)
+
+    @property
+    def length(self) -> int:
+        return len(self.contents)
+
+    @property
+    def word_count(self) -> int:
+        return len(self.contents.split(" "))
